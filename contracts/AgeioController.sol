@@ -87,8 +87,9 @@ contract AgeioController is Ownable {
   }
   function claimAgtReward(address account, uint256 amount) public onlyAgtMasterChef {
     uint256 _amount = amount > IERC20(agtToken).balanceOf(address(this)) ? IERC20(agtToken).balanceOf(address(this)) : amount;
-    IERC20(agtToken).safeTransfer(account, _amount);
-    IERC20(agtToken).safeTransfer(devaddr, _amount.div(20));  //5% to developer
+    uint256 devFee = _amount.div(20);
+    IERC20(agtToken).safeTransfer(account, _amount.sub(devFee));
+    IERC20(agtToken).safeTransfer(devaddr, devFee);  //5% to developer
   }
   function claimTfuelReward() public onlyOwner {
     safeTransferTfuel(_msgSender(), address(this).balance);
