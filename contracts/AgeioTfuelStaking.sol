@@ -916,12 +916,10 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
   event WithdrawalsDeposited(uint256 withdrawalAmount);
   event ChangedSettings(uint256 tankFee, uint256 rewardsDuration, uint256 bonusMultiplier);
   event Staked(address indexed user, uint256 amount);  
-  event Compounded(address indexed user, uint256 amount);
   event RequestedWithdraw(address indexed user, uint256 amount);
   event CanceledWithdraw(address indexed user, uint256 amount);
   event Withdrawn(address indexed user, uint256 amount);
   event RewardPaid(address indexed user, uint256 tfuelEarned, uint256 agtEarned);
-  event StakedAssetOnGNode(address indexed to, uint256 amount);
 
   // Safe transfer tfuel
   function safeTransferTfuel(address to, uint256 amount) internal {
