@@ -824,7 +824,6 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
     emit Staked(_msgSender(), amount);
   }
   function requestWithdraw(uint256 amount) public nonReentrant {
-    require(amount <= balances[_msgSender()], "Request withdraw: total amount exceeds");
     require(unstakingBalances[_msgSender()].add(amount) <= balances[_msgSender()], "Request withdraw: amount exceeds");
     unstakingBalances[_msgSender()] = unstakingBalances[_msgSender()].add(amount);
     totalUnstaking = totalUnstaking.add(amount);
