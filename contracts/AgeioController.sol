@@ -126,6 +126,7 @@ contract AgeioController is Ownable {
     address pairAddress = IUniswapV2Factory(factory).getPair(_thetaswapRouter.WETH(), agtToken);
     IUniswapV2Pair pair = IUniswapV2Pair(pairAddress);
     (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
+    if (reserve1 == 0) return 0;
     //decimals
     return tfuelAmount.mul(reserve0).div(reserve1);
   }
