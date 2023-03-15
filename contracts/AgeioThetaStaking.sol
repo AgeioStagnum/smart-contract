@@ -771,10 +771,12 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
     bonusMultiplier = 1;
   }
   function setStakingToken(address _stakingToken) public onlyOwner {
+    require(_stakingToken != address(0), "Error: Staking token address cannot be zero address");
     stakingToken = IERC20(_stakingToken);
     IERC20(stakingToken).safeApprove(address(rewardsDistribution), type(uint256).max);
   }
   function setAgtToken(address _agtToken) public onlyOwner {
+    require(_agtToken != address(0), "Error: AGT token address cannot be zero address");
     agtToken = IERC20(_agtToken);
   }
   function setAgeioController(address _controller) external onlyOwner {
@@ -782,7 +784,7 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
     ageioController = _controller;
   }
   function setRewardsDistribution(address _rewardsDistribution) external onlyOwner {
-    require(_rewardsDistribution != owner(), "Error: Invalid rewards distribution");
+    require(_rewardsDistribution != address(0) && _rewardsDistribution != owner(), "Error: Invalid rewards distribution");
     rewardsDistribution = _rewardsDistribution;
   }
   function changeSettings(uint256 _tankFee, uint256 _rewardsDuration, uint256 _bonusMultiplier) public onlyOwner {

@@ -42,10 +42,11 @@ contract AgeioController is Ownable {
   }
 
   constructor(address _agtToken, address _devaddr) {
+    require(_agtToken != address(0), "Error: AGT token address cannot be zero address");
     agtToken = _agtToken;
     treasury = _msgSender();
     isSwappable = false;
-    devaddr = _devaddr;
+    devaddr = _devaddr;  // _devaddr can be zero address at the beginning
   }
 
   function addMasterChef(address _chef, bool _isChef) public onlyOwner {
@@ -57,7 +58,8 @@ contract AgeioController is Ownable {
     if ( _treasury != address(0) ) treasury = _treasury;
     emit ChangedTreasury(treasury);
   }
-  function changeAgtToken(address _agtToken) public onlyOwner {    
+  function changeAgtToken(address _agtToken) public onlyOwner {
+    require(_agtToken != address(0), "Error: AGT token address cannot be zero address");
     agtToken = _agtToken;
   }
   function changeFee(uint256 _treasuryFee, uint256 _burnFee) public onlyOwner {
@@ -89,7 +91,7 @@ contract AgeioController is Ownable {
     uint256 _amount = amount > IERC20(agtToken).balanceOf(address(this)) ? IERC20(agtToken).balanceOf(address(this)) : amount;
     uint256 devFee = _amount.div(20);
     IERC20(agtToken).safeTransfer(account, _amount.sub(devFee));
-    IERC20(agtToken).safeTransfer(devaddr, devFee);  //5% to developer
+    if (devaddr != address(0)) IERC20(agtToken).safeTransfer(devaddr, devFee);  //5% to developer
   }
   function claimTfuelReward() public onlyOwner {
     safeTransferTfuel(_msgSender(), address(this).balance);
