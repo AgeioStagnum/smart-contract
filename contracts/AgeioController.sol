@@ -956,7 +956,8 @@ contract AgeioController is Ownable {
     path[0] = _thetaswapRouter.WETH();
     path[1] = forTokenAddress;
 
-    _thetaswapRouter.swapExactETHForTokens{value: tfuelAmount}(
+    // _thetaswapRouter.swapExactETHForTokens{value: tfuelAmount}(
+    _thetaswapRouter.swapETHForExactTokens{value: tfuelAmount}(
       0,
       path,
       address(this),
