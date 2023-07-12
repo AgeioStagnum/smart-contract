@@ -732,6 +732,11 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
   // Global configs
   uint256 public minLimit =  10000*1e18;
   uint256 public maxLimit = 500000*1e18;
+  
+  uint256 public MAX_TANKFEE = 1000;
+  uint256 public MAX_REWARD_PERIOD = 30 days;
+  uint256 public MAX_BONUS_MULTIPLIER = 10;
+
   uint256 public tankFee;
   uint256 public bonusMultiplier;
   uint256 public periodFinish = 0;
@@ -797,9 +802,18 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
     emit ChangedAgeioController(ageioController);
   }
   function changeSettings(uint256 _tankFee, uint256 _rewardsDuration, uint256 _bonusMultiplier) public onlyOwner {
-    if (_tankFee > 0) tankFee = _tankFee;
-    if (_rewardsDuration > 0) rewardsDuration = _rewardsDuration;
-    if (_bonusMultiplier > 0) bonusMultiplier = _bonusMultiplier;
+    if (_tankFee > 0) {
+      require(_tankFee <= MAX_TANKFEE, "Error: Over max boundary");
+      tankFee = _tankFee;
+    }
+    if (_rewardsDuration > 0) {
+      require(_rewardsDuration <= MAX_REWARD_PERIOD, "Error: Over max boundary");
+      rewardsDuration = _rewardsDuration;
+    }
+    if (_bonusMultiplier > 0) {
+      require(_bonusMultiplier <= MAX_BONUS_MULTIPLIER, "Error: Over max boundary");
+      bonusMultiplier = _bonusMultiplier;
+    }
     emit ChangedSettings(tankFee, rewardsDuration, bonusMultiplier);
   }
   function addPool(address _holder, address _staker) public onlyOwner {

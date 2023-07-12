@@ -742,6 +742,10 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
   uint256 public totalUnstaking;
   mapping(address => uint256) public unstakingBalances;  // user unstaking balance
 
+  uint256 public MAX_TANKFEE = 1000;
+  uint256 public MAX_REWARD_PERIOD = 30 days;
+  uint256 public MAX_BONUS_MULTIPLIER = 10;
+
   uint256 public bonusMultiplier;
   uint256 public periodFinish = 0;
   uint256 public rewardRate = 0;
@@ -792,9 +796,18 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
     emit ChangedRewardDistribution(rewardsDistribution);
   }
   function changeSettings(uint256 _tankFee, uint256 _rewardsDuration, uint256 _bonusMultiplier) public onlyOwner {
-    if (_tankFee > 0) tankFee = _tankFee;
-    if (_rewardsDuration > 0) rewardsDuration = _rewardsDuration;
-    if (_bonusMultiplier > 0) bonusMultiplier = _bonusMultiplier;
+    if (_tankFee > 0) {
+      require(_tankFee <= MAX_TANKFEE, "Error: Over max boundary");
+      tankFee = _tankFee;
+    }
+    if (_rewardsDuration > 0) {
+      require(_rewardsDuration <= MAX_REWARD_PERIOD, "Error: Over max boundary");
+      rewardsDuration = _rewardsDuration;
+    }
+    if (_bonusMultiplier > 0) {
+      require(_bonusMultiplier <= MAX_BONUS_MULTIPLIER, "Error: Over max boundary");
+      bonusMultiplier = _bonusMultiplier;
+    }
     emit ChangedSettings(tankFee, rewardsDuration, bonusMultiplier);
   }
   function lastTimeRewardApplicable() public view returns (uint256) {
