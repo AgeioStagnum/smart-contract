@@ -774,18 +774,22 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
     require(_stakingToken != address(0), "Error: Staking token address cannot be zero address");
     stakingToken = IERC20(_stakingToken);
     IERC20(stakingToken).safeApprove(address(rewardsDistribution), type(uint256).max);
+    emit ChangedStakingToken(_stakingToken);
   }
   function setAgtToken(address _agtToken) public onlyOwner {
     require(_agtToken != address(0), "Error: AGT token address cannot be zero address");
     agtToken = IERC20(_agtToken);
+    emit ChangedAgtToken(_agtToken);
   }
   function setAgeioController(address _controller) external onlyOwner {
     require(_controller != address(0) && _controller.code.length > 0 , "Error: Ageio Controller should be non-zero address.");
     ageioController = _controller;
+    emit ChangedAgeioController(ageioController);
   }
   function setRewardsDistribution(address _rewardsDistribution) external onlyOwner {
     require(_rewardsDistribution != address(0) && _rewardsDistribution != owner(), "Error: Invalid rewards distribution");
     rewardsDistribution = _rewardsDistribution;
+    emit ChangedRewardDistribution(rewardsDistribution);
   }
   function changeSettings(uint256 _tankFee, uint256 _rewardsDuration, uint256 _bonusMultiplier) public onlyOwner {
     if (_tankFee > 0) tankFee = _tankFee;
@@ -911,6 +915,10 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
   }
 
   /* ========== EVENTS ========== */
+  event ChangedStakingToken(address stakingToken);
+  event ChangedRewardDistribution(address rewardsDistribution);
+  event ChangedAgtToken(address agtToken);
+  event ChangedAgeioController(address ageioController);
 
   event RewardAdded(uint256 reward);
   event WithdrawalsDeposited(uint256 withdrawalAmount);

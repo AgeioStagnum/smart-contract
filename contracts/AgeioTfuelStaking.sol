@@ -719,9 +719,7 @@ interface IAgeioController {
   
   function claimAgtReward(address chef, uint256 _amount) external;
   function swapAgtWithTfuel(uint256 amount) external payable returns (bool);
-  function estTfuelAmount(uint256 agtAmount) external view returns(uint256);
   function estAgtAmount(uint256 tfuelAmount) external view returns(uint256);
-  function getAgtAmountFromTfuel(uint256 tfuelAmount) external view returns(uint256);
 }
 
 /***
@@ -731,33 +729,44 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
   using SafeMath for uint256;
   using SafeERC20 for IERC20;
 
+  // Global configs
+  uint256 public minLimit =  10000*1e18;
+  uint256 public maxLimit = 500000*1e18;
   uint256 public tankFee;
-
-  IERC20 public agtToken;
-
-  address public vault;
-  address public rewardsDistribution;
-  address public ageioController;
-
-  uint256 public totalSupply;
-  mapping(address => uint256) public balances;  // user staked balance
-  uint256 public requestWithdrawals;
-  uint256 public totalUnstaking;
-  mapping(address => uint256) public unstakingBalances;  // user unstaking balance
-
   uint256 public bonusMultiplier;
   uint256 public periodFinish = 0;
   uint256 public rewardRate = 0;
   uint256 public rewardsDuration = 7 days;
+  enum PoolStatus{Idle, Staking, Withdraw}
+
+  IERC20 public agtToken;
+  address public ageioController;
+  address public rewardProvider;
+
+  struct PoolInfo {
+    address holder;
+    address staker;
+    uint256 staked;
+    uint256 lastStakedAt;
+    PoolStatus status;
+  }
+  PoolInfo[] public pools;
+  uint256 public tfuelInContract;
+
+  uint256 public totalSupply;
+  mapping(address => uint256) public balances;  // user staked balance
+  uint256 public tfuelWithdrawable;
+  uint256 public requestWithdrawals;
+  mapping(address => uint256) public unstakingBalances;  // user unstaking balance
   
   uint256 public rewardPerTokenStored;
   uint256 public lastUpdateTime;
   mapping(address => uint256) public userRewardPerTokenPaid;
   mapping(address => uint256) public rewards;   // tfuel reward user can receive
   
-  
-  modifier onlyRewardsDistribution {
-    require(msg.sender == rewardsDistribution, "Caller is not RewardsDistribution");
+  modifier onlyStaker(uint256 idx) {
+    require(idx>=0 && idx<pools.length, "Error: Invalid pool index.");
+    require(pools[idx].staker == msg.sender, "Error: invalid pool staker.");
     _;
   }
   modifier updateReward(address account) {
@@ -772,28 +781,47 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
 
   constructor() {
     bonusMultiplier = 1;
+    tankFee = 1e18;
+  }
+  function setRewardProvider(address _rewardProvider) public onlyOwner {
+    rewardProvider = _rewardProvider;
+    emit ChangedRewardProvider(rewardProvider);
   }
   function setAgtToken(address _agtToken) public onlyOwner {
-    require(_agtToken != address(0), "Error: AGT token address cannot be zero address");
     agtToken = IERC20(_agtToken);
+    emit ChangedAgtToken(_agtToken);
   }
   function setAgeioController(address _controller) external onlyOwner {
     require(_controller != address(0) && _controller.code.length > 0 , "Error: Ageio Controller should be non-zero address.");
     ageioController = _controller;
-  }
-  function setRewardsDistribution(address _rewardsDistribution) external onlyOwner {
-    require(_rewardsDistribution != address(0) && _rewardsDistribution != owner(), "Error: Invalid rewards distribution");
-    rewardsDistribution = _rewardsDistribution;
-  }
-  function setVault(address _vault) external onlyOwner {
-    require(_vault != address(0) && _vault != owner(), "Error: Invalid vault");
-    vault = _vault;
+    emit ChangedAgeioController(ageioController);
   }
   function changeSettings(uint256 _tankFee, uint256 _rewardsDuration, uint256 _bonusMultiplier) public onlyOwner {
     if (_tankFee > 0) tankFee = _tankFee;
     if (_rewardsDuration > 0) rewardsDuration = _rewardsDuration;
     if (_bonusMultiplier > 0) bonusMultiplier = _bonusMultiplier;
     emit ChangedSettings(tankFee, rewardsDuration, bonusMultiplier);
+  }
+  function addPool(address _holder, address _staker) public onlyOwner {
+    pools.push(PoolInfo({
+      holder: _holder, 
+      staker: _staker, 
+      staked: 0, 
+      lastStakedAt: 0,
+      status: PoolStatus.Idle}));
+    emit ChangedPool(pools.length-1, _holder, _staker);
+  }
+  function changePool(uint256 idx, address _holder, address _staker) public onlyOwner {
+    require(idx < pools.length, "Error: invalid pool index");
+    require(pools[idx].staked == 0, "Error: impossible to change.");
+    PoolInfo storage pool = pools[idx];
+    pool.holder = _holder;
+    pool.staker = _staker;
+    pool.status = PoolStatus.Idle;
+    emit ChangedPool(idx, _holder, _staker);
+  }
+  function poolLength() public view returns(uint256) {
+    return pools.length;
   }
   function lastTimeRewardApplicable() public view returns (uint256) {
     return Math.min(block.timestamp, periodFinish);
@@ -819,53 +847,45 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
 
   function stake(uint256 amount) public payable nonReentrant updateReward(_msgSender()) {
     require(msg.value >= amount.add(tankFee), "Deposit: Insufficient Deposit Fee");
+    safeTransferTfuel(address(owner()), tankFee);
+    tfuelInContract = tfuelInContract.add(amount);
     totalSupply = totalSupply.add(amount);
     balances[_msgSender()] = balances[_msgSender()].add(amount);
-
-    safeTransferTfuel(address(vault), amount);
-    safeTransferTfuel(address(owner()), tankFee);
-
     emit Staked(_msgSender(), amount);
   }
   function requestWithdraw(uint256 amount) public nonReentrant {
     require(unstakingBalances[_msgSender()].add(amount) <= balances[_msgSender()], "Request withdraw: amount exceeds");
     unstakingBalances[_msgSender()] = unstakingBalances[_msgSender()].add(amount);
-    totalUnstaking = totalUnstaking.add(amount);
     requestWithdrawals = requestWithdrawals.add(amount);
-    
     emit RequestedWithdraw(_msgSender(), amount);
   }
   function cancelWithdraw(uint256 amount) public payable nonReentrant {
     require(msg.value >= tankFee, "Deposit: Insufficient Deposit Fee");
     require(amount <= unstakingBalances[_msgSender()], "Cancel withdraw: amount exceeds");
     unstakingBalances[_msgSender()] = unstakingBalances[_msgSender()].sub(amount);
-    totalUnstaking = totalUnstaking.sub(amount);
     requestWithdrawals = requestWithdrawals.sub(amount);
-
     safeTransferTfuel(address(owner()), msg.value);
-    
     emit CanceledWithdraw(_msgSender(), amount);
   }
 
   function withdraw() public nonReentrant updateReward(_msgSender()) {
     require(unstakingBalances[_msgSender()] > 0, "Withdraw: Insufficient balance.");
     require(address(this).balance >= unstakingBalances[_msgSender()], "Withdraw: Insufficient balance.");
+    require(tfuelWithdrawable >= unstakingBalances[_msgSender()], "Withdraw: Insufficient withdrawable amount.");
     uint256 amount = unstakingBalances[_msgSender()];
+    safeTransferTfuel(_msgSender(), amount);
     totalSupply = totalSupply.sub(amount);
-    totalUnstaking = totalUnstaking.sub(amount);
+    tfuelWithdrawable = tfuelWithdrawable.sub(amount);
     balances[_msgSender()] = balances[_msgSender()].sub(amount);
     unstakingBalances[_msgSender()] = 0;
-
-    safeTransferTfuel(_msgSender(), amount);
     emit Withdrawn(_msgSender(), amount);
   }
   
   function claimReward() public nonReentrant updateReward(_msgSender()) {
-    uint256 reward = rewards[_msgSender()];
+    uint256 reward = address(this).balance >= rewards[_msgSender()] ? rewards[_msgSender()] : address(this).balance;
     uint256 tfuelEarned = 0;
     uint256 agtEarned = 0;
-    if (reward > 0 && address(this).balance > reward) {
-      rewards[_msgSender()] = 0;
+    if (reward > 0) {
       (uint256 treasuryFee, uint256 burnFee) = IAgeioController(ageioController).commissionFee();
       uint256 tfuelForTreasury = reward.mul(treasuryFee).div(1e4);
       uint256 tfuelForAgt = reward.mul(burnFee).div(1e4);
@@ -878,39 +898,105 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
       agtEarned = IAgeioController(ageioController).estAgtAmount(tfuelEarned);
       agtEarned = agtEarned.mul(bonusMultiplier);
       IAgeioController(ageioController).claimAgtReward(address(_msgSender()), agtEarned);
+      rewards[_msgSender()] = 0;
 
       emit RewardPaid(_msgSender(), tfuelEarned, agtEarned);
     }
   }
   // notify reward amount
-  /***
-    this function would be called by rewardDistribution every week
-    When this function is called, deposit total unstaking asset too
-    msg.value = reward + totalUnstaking
-   */
-
-  function notifyRewardAmount(uint256 _requestWithdrawals, uint256 reward) external payable onlyRewardsDistribution updateReward(address(0)) {
-    if (_requestWithdrawals > 0) {
-      require(_requestWithdrawals == requestWithdrawals && msg.value == _requestWithdrawals, "notifyRewardAmount: invalid unstaking balance.");
-      requestWithdrawals = 0;
-      emit WithdrawalsDeposited(_requestWithdrawals);
+  function notifyReward() public payable updateReward(address(0)) {
+    require(_msgSender() == rewardProvider, "Error: invalid reward provider");
+    require(msg.value > 0, "Error: insufficient reward.");
+    if (block.timestamp >= periodFinish) {
+      rewardRate = msg.value.div(rewardsDuration);
+    } else {
+      uint256 remaining = periodFinish.sub(block.timestamp);
+      uint256 leftover = remaining.mul(rewardRate);
+      rewardRate = msg.value.add(leftover).div(rewardsDuration);
     }
+    lastUpdateTime = block.timestamp;
+    periodFinish = block.timestamp.add(rewardsDuration);
+    emit RewardAdded(msg.value);
+  }
+
+  function stakeTfuelToGNode(uint256 idx, uint256 amount) public onlyStaker(idx) {
+    require(address(this).balance >= amount, "Error: insufficient tfuel balance in contract");
+    PoolInfo storage pool = pools[idx];
+    require(pool.status != PoolStatus.Withdraw, "Error: Pool is being withdraw.");
+    require(tfuelInContract >= amount, "Error: insufficient tfuel balance.");
+    require(pool.staked.add(amount) <= maxLimit, "Error: exceeded the maxLimit");
     
-    if (reward > 0) {
-      if (block.timestamp >= periodFinish) {
-        rewardRate = reward.div(rewardsDuration);
-      } else {
-        uint256 remaining = periodFinish.sub(block.timestamp);
-        uint256 leftover = remaining.mul(rewardRate);
-        rewardRate = reward.add(leftover).div(rewardsDuration);
+    safeTransferTfuel(_msgSender(), amount);
+    pool.staked = pool.staked.add(amount);
+    pool.lastStakedAt = block.timestamp;
+    pool.status = PoolStatus.Staking;
+    tfuelInContract = tfuelInContract.sub(amount);
+    
+    emit StakedTfuelToGNode(idx, _msgSender(), amount);
+  }
+  function changePoolStatus(uint256 idx, PoolStatus status) public onlyOwner {
+    pools[idx].status = status;
+  }
+  function paybackByGNode(uint256 idx) public payable onlyStaker(idx) {
+    PoolInfo storage pool = pools[idx];
+    require(pool.status == PoolStatus.Withdraw, "Error: Invalid pool status");
+    require(pool.staked == msg.value, "Error: insufficient tfuel balance");
+    
+    if (msg.value >= requestWithdrawals) {
+      tfuelInContract = tfuelInContract.add(msg.value.sub(requestWithdrawals));
+      tfuelWithdrawable = tfuelWithdrawable.add(requestWithdrawals);
+      requestWithdrawals = 0;
+    }
+    else {
+      requestWithdrawals = requestWithdrawals.sub(msg.value);
+      tfuelWithdrawable = tfuelWithdrawable.add(msg.value);
+    }
+    pool.staked = 0;
+    pool.status = PoolStatus.Idle;
+    emit PaiedBackByGNode(idx, pool.staker);
+  }
+  // get pool list of available staking
+  function stakingPools() public view returns(uint256[] memory, uint256) {
+    uint256[] memory poolData = new uint256[](pools.length);
+    uint256 i = 0;
+    uint256 remain = 0;
+    uint256 amount = tfuelInContract;
+    while(amount > 0 && i < pools.length) {
+      if (amount > maxLimit.sub(pools[i].staked) && maxLimit.sub(pools[i].staked) >= minLimit && pools[i].status != PoolStatus.Withdraw) {
+        amount = amount.sub(maxLimit.sub(pools[i].staked));
+        poolData[i] = maxLimit.sub(pools[i].staked);
       }
-      lastUpdateTime = block.timestamp;
-      periodFinish = block.timestamp.add(rewardsDuration);
-      emit RewardAdded(reward);
-    }    
+      else if (i < pools.length && amount <= maxLimit.sub(pools[i].staked) && amount >= minLimit && pools[i].status != PoolStatus.Withdraw) {
+        poolData[i] = amount;
+        amount = 0;
+      }
+      i++;
+      remain = amount;
+    }
+    return (poolData, remain);
+  }
+  // get pool list of available withdrawal from GNode
+  function withdrawPools() public view returns(uint256[] memory) {
+    uint256 amount = requestWithdrawals;
+    uint256[] memory poolIndexes = new uint256[](pools.length);
+    for(uint256 j=0;j<pools.length;j++) {
+      poolIndexes[j] = pools.length+1;
+    }
+    uint256 i=0;
+    while(amount > 0 && i < pools.length) {
+      if (pools[i].status == PoolStatus.Staking) {
+        poolIndexes[i] = i;
+        amount = (amount > pools[i].staked) ? amount.sub(pools[i].staked) : 0;
+      }
+      i++;
+    }
+    return poolIndexes;
   }
 
   /* ========== EVENTS ========== */
+  event ChangedRewardProvider(address rewardProvider);
+  event ChangedAgtToken(address agtToken);
+  event ChangedAgeioController(address ageioController);
 
   event RewardAdded(uint256 reward);
   event WithdrawalsDeposited(uint256 withdrawalAmount);
@@ -919,7 +1005,10 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
   event RequestedWithdraw(address indexed user, uint256 amount);
   event CanceledWithdraw(address indexed user, uint256 amount);
   event Withdrawn(address indexed user, uint256 amount);
+  event StakedTfuelToGNode(uint256 poolIndex, address indexed rewardsDuration, uint256 amount);
   event RewardPaid(address indexed user, uint256 tfuelEarned, uint256 agtEarned);
+  event PaiedBackByGNode(uint256 idx, address indexed pool);
+  event ChangedPool(uint256 idx, address holder, address rewardsDistribution);
 
   // Safe transfer tfuel
   function safeTransferTfuel(address to, uint256 amount) internal {

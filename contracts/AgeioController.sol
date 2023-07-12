@@ -872,6 +872,7 @@ contract AgeioController is Ownable {
   function changeAgtToken(address _agtToken) public onlyOwner {
     require(_agtToken != address(0), "Error: AGT token address cannot be zero address");
     agtToken = _agtToken;
+    emit ChangedAgtToken(agtToken);
   }
   function changeFee(uint256 _treasuryFee, uint256 _burnFee) public onlyOwner {
     if (_treasuryFee.add(_burnFee) <= MAX_FEE) {
@@ -979,6 +980,7 @@ contract AgeioController is Ownable {
     safeTransferTfuel(_msgSender(), address(this).balance);
   }
 
+  event ChangedAgtToken(address agtToken);
   event ChangedAgtMasterChef(address chef, bool isChef);
   event ChangedTreasury(address treasury);
   event ChangedFee(uint256 treasuryFee, uint256 burnFee);
