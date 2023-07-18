@@ -899,7 +899,7 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
     uint256 reward = address(this).balance >= rewards[_msgSender()] ? rewards[_msgSender()] : address(this).balance;
     uint256 tfuelEarned = 0;
     uint256 agtEarned = 0;
-    if (reward > 0) {
+    if (reward > 0 && address(this).balance > reward) {
       (uint256 treasuryFee, uint256 burnFee) = IAgeioController(ageioController).commissionFee();
       uint256 tfuelForTreasury = reward.mul(treasuryFee).div(1e4);
       uint256 tfuelForAgt = reward.mul(burnFee).div(1e4);

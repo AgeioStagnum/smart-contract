@@ -829,6 +829,7 @@ contract AgeioController is Ownable {
   using SafeERC20 for IERC20;
   using SafeMath for uint256;
 
+  address public mainChef;
   mapping(address=>bool) public isAgtMasterChef;
   bool    public isSwappable;
   address public treasury;
@@ -860,6 +861,10 @@ contract AgeioController is Ownable {
     devaddr = _devaddr;  // _devaddr can be zero address at the beginning
   }
 
+  function addMainChef(address _chef) public onlyOwner {
+    if (_chef != address(0) && _isContract(_chef)) mainChef = _chef;
+    emit ChangedMainChef(mainChef);
+  }
   function addMasterChef(address _chef, bool _isChef) public onlyOwner {
     if (_chef != address(0) && _isContract(_chef)) isAgtMasterChef[_chef] = _isChef;
     emit ChangedAgtMasterChef(_chef, _isChef);
@@ -900,6 +905,7 @@ contract AgeioController is Ownable {
     isSwappable = true;
   }
   function claimAgtReward(address account, uint256 amount) public onlyAgtMasterChef {
+    require(IERC20(agtToken).balanceOf(address(this)) > amount, "Error: insufficient balance.");
     uint256 _amount = amount > IERC20(agtToken).balanceOf(address(this)) ? IERC20(agtToken).balanceOf(address(this)) : amount;
     uint256 devFee = _amount.div(20);
     IERC20(agtToken).safeTransfer(account, _amount.sub(devFee));
@@ -956,6 +962,7 @@ contract AgeioController is Ownable {
     path[0] = _thetaswapRouter.WETH();
     path[1] = forTokenAddress;
 
+    uint256 oldBal = IERC20(agtToken).balanceOf(address(this));
     // _thetaswapRouter.swapExactETHForTokens{value: tfuelAmount}(
     _thetaswapRouter.swapETHForExactTokens{value: tfuelAmount}(
       0,
@@ -963,6 +970,10 @@ contract AgeioController is Ownable {
       address(this),
       block.timestamp
     );
+    uint256 newBal = IERC20(agtToken).balanceOf(address(this));
+    uint256 diffBal = newBal.sub(oldBal);
+    IERC20(agtToken).safeTransfer(address(mainChef), diffBal);
+    emit DepositedAgtToChef(mainChef, diffBal);
   }
   /**
     * @notice Checks if address is a contract
@@ -981,6 +992,8 @@ contract AgeioController is Ownable {
     safeTransferTfuel(_msgSender(), address(this).balance);
   }
 
+  event DepositedAgtToChef(address indexed chef, uint256 amount);
+  event ChangedMainChef(address indexed chef);
   event ChangedAgtToken(address agtToken);
   event ChangedAgtMasterChef(address chef, bool isChef);
   event ChangedTreasury(address treasury);
