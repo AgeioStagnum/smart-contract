@@ -963,8 +963,7 @@ contract AgeioController is Ownable {
     path[1] = forTokenAddress;
 
     uint256 oldBal = IERC20(agtToken).balanceOf(address(this));
-    // _thetaswapRouter.swapExactETHForTokens{value: tfuelAmount}(
-    _thetaswapRouter.swapETHForExactTokens{value: tfuelAmount}(
+    _thetaswapRouter.swapExactETHForTokens{value: tfuelAmount}(
       0,
       path,
       address(this),

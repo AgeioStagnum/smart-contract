@@ -876,9 +876,9 @@ contract AgeioTfuelStaking is Ownable, ReentrancyGuard {
   function cancelWithdraw(uint256 amount) public payable nonReentrant {
     require(msg.value >= tankFee, "Deposit: Insufficient Deposit Fee");
     require(amount <= unstakingBalances[_msgSender()], "Cancel withdraw: amount exceeds");
+    safeTransferTfuel(address(owner()), msg.value);
     unstakingBalances[_msgSender()] = unstakingBalances[_msgSender()].sub(amount);
     requestWithdrawals = requestWithdrawals.sub(amount);
-    safeTransferTfuel(address(owner()), msg.value);
     emit CanceledWithdraw(_msgSender(), amount);
   }
 

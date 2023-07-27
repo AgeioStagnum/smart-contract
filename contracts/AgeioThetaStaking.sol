@@ -834,11 +834,12 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
 
   function stake(uint256 amount) public payable nonReentrant updateReward(_msgSender()) {
     require(msg.value >= tankFee, "Deposit: Insufficient Deposit Fee");
-    totalSupply = totalSupply.add(amount);
-    balances[_msgSender()] = balances[_msgSender()].add(amount);
 
     stakingToken.safeTransferFrom(_msgSender(), address(rewardsDistribution), amount);
     safeTransferTfuel(address(owner()), msg.value);
+
+    totalSupply = totalSupply.add(amount);
+    balances[_msgSender()] = balances[_msgSender()].add(amount);
 
     emit Staked(_msgSender(), amount);
   }
@@ -853,11 +854,12 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
   function cancelWithdraw(uint256 amount) public payable nonReentrant {
     require(msg.value >= tankFee, "Deposit: Insufficient Deposit Fee");
     require(amount<= unstakingBalances[_msgSender()], "Cancel withdraw: amount exceeds");
+    safeTransferTfuel(address(owner()), msg.value);
+
     unstakingBalances[_msgSender()] = unstakingBalances[_msgSender()].sub(amount);
     totalUnstaking = totalUnstaking.sub(amount);
     requestWithdrawals = requestWithdrawals.sub(amount);
 
-    safeTransferTfuel(address(owner()), msg.value);
     
     emit CanceledWithdraw(_msgSender(), amount);
   }
@@ -866,12 +868,14 @@ contract AgeioStaking is Ownable, ReentrancyGuard {
     require(unstakingBalances[_msgSender()] > 0, "Withdraw: Insufficient balance.");
     require(stakingToken.balanceOf(address(this)) >= unstakingBalances[_msgSender()], "Withdraw: Insufficient balance.");
     uint256 amount = unstakingBalances[_msgSender()];
+    
+    stakingToken.safeTransfer(_msgSender(), amount);
+
     totalSupply = totalSupply.sub(amount);
     totalUnstaking = totalUnstaking.sub(amount);
     balances[_msgSender()] = balances[_msgSender()].sub(amount);
     unstakingBalances[_msgSender()] = 0;
 
-    stakingToken.safeTransfer(_msgSender(), amount);
     emit Withdrawn(_msgSender(), amount);
   }
   
